@@ -196,6 +196,62 @@ function drawRunwayMarkings(ctx, plane) {
   }
 }
 
+/** One airfield light: a soft glow and a hard core, sized by its distance. */
+function lightDot(ctx, plane, x, z, rgb, core = 1.05) {
+  const p = project(plane, x, z, 0.9);
+  if (!p || p.f > 2600) return;
+  const r = Math.max(1.1, (core * FOCAL) / p.f);
+  ctx.fillStyle = `rgba(${rgb},0.26)`;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r * 2.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(${rgb},0.95)`;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * The airfield's lights — pure dressing, no rules attached: warm edge lights down both
+ * sides of the strip, green across both thresholds, and a four-unit PAPI beside the
+ * touchdown zone whose white-over-red count follows the aeroplane's actual slope to
+ * the threshold it is approaching (two white, two red on the game's own glide slope).
+ */
+function drawRunwayLights(ctx, plane) {
+  const hw = RUNWAY.width / 2;
+  ctx.save();
+  for (const ex of [-hw - 2.5, hw + 2.5]) {
+    for (let z = RUNWAY.zNorth + 30; z <= RUNWAY.zSouth - 20; z += 60) {
+      lightDot(ctx, plane, ex, z, '255,238,190');
+    }
+  }
+  for (const endZ of [RUNWAY.zNorth + 3, RUNWAY.zSouth - 3]) {
+    for (let x = -hw + 5; x <= hw - 5; x += 8) lightDot(ctx, plane, x, endZ, '80,255,140');
+  }
+  const fromNorth = plane.z < RUNWAY.zNorth;
+  const fromSouth = plane.z > RUNWAY.zSouth;
+  if ((fromNorth || fromSouth) && !plane.onGround && plane.alt > 2) {
+    const endZ = fromNorth ? RUNWAY.zNorth : RUNWAY.zSouth;
+    const dist = Math.max(30, Math.abs(endZ - plane.z));
+    const slope = plane.alt / dist;
+    const whites = clamp(2 + Math.round((slope - 0.085) / 0.014), 0, 4);
+    const papiZ = endZ + (fromNorth ? 95 : -95);
+    for (let i = 0; i < 4; i += 1) {
+      const p = project(plane, -(hw + 9 + i * 3.4), papiZ, 0.6);
+      if (!p || p.f > 2200) continue;
+      const bs = Math.max(1.8, (1.7 * FOCAL) / p.f);
+      const white = i >= 4 - whites;
+      ctx.fillStyle = white ? 'rgba(255,246,225,0.3)' : 'rgba(255,70,55,0.3)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, bs * 1.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = white ? '#fff6e1' : '#ff4637';
+      ctx.fillRect(p.x - bs * 0.85, p.y - bs * 0.55, bs * 1.7, bs * 1.1);
+    }
+  }
+  ctx.restore();
+}
+
 function drawTree(ctx, p, sizePx, tone) {
   const h = sizePx;
   ctx.fillStyle = '#6d5136';
@@ -310,20 +366,59 @@ function drawFallingCrates(ctx, plane, sortie) {
     const y = Math.max(0, crate.alt - crate.fall);
     const p = project(plane, crate.x, crate.z, y);
     if (!p) continue;
-    const s = Math.max(3, (6 * FOCAL) / p.f);
+    // The assembly is drawn big and contrasty on purpose: a supply drop is the second
+    // leg's whole point, and a crate under its canopy must read at a glance, in the game
+    // as much as in a screenshot — filled gores, rigging lines, a strapped wooden box.
+    const s = Math.max(4, (8.5 * FOCAL) / p.f);
+    const cr = s * 1.04; // the canopy's radius
+    const rimY = p.y - s * 1.72; // where the canopy's rim sits above the crate
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.lineWidth = 1.2;
+    // Rigging lines from the rim down to the crate's top corners.
+    ctx.strokeStyle = 'rgba(40,32,22,0.75)';
+    ctx.lineWidth = Math.max(1, s * 0.045);
     ctx.beginPath();
-    ctx.arc(p.x, p.y - s * 1.5, s * 0.85, Math.PI, 0);
+    for (const fx of [-0.92, -0.34, 0.34, 0.92]) {
+      ctx.moveTo(p.x + fx * cr, rimY + s * 0.05);
+      ctx.lineTo(p.x + fx * s * 0.5, p.y - s * 0.42);
+    }
     ctx.stroke();
+    // The canopy: an orange dome with a white centre gore and a darker rim stroke.
     ctx.beginPath();
-    ctx.moveTo(p.x - s * 0.85, p.y - s * 1.5);
-    ctx.lineTo(p.x, p.y - s * 0.3);
-    ctx.lineTo(p.x + s * 0.85, p.y - s * 1.5);
+    ctx.ellipse(p.x, rimY, cr, cr * 0.6, 0, Math.PI, 0);
+    ctx.closePath();
+    ctx.fillStyle = '#ff9040';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(p.x - cr * 0.36, rimY);
+    ctx.quadraticCurveTo(p.x - cr * 0.3, rimY - cr * 0.62, p.x, rimY - cr * 0.6);
+    ctx.quadraticCurveTo(p.x + cr * 0.3, rimY - cr * 0.62, p.x + cr * 0.36, rimY);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(250,246,238,0.96)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(146,66,16,0.85)';
+    ctx.lineWidth = Math.max(1.2, s * 0.06);
+    ctx.beginPath();
+    ctx.ellipse(p.x, rimY, cr, cr * 0.6, 0, Math.PI, 0);
     ctx.stroke();
-    ctx.fillStyle = '#9c7748';
-    ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    // The crate: a wooden box with a lit top face, dark straps and a stencilled square.
+    const top = p.y - s * 0.46;
+    ctx.fillStyle = '#8a5a28';
+    ctx.fillRect(p.x - s / 2, top, s, s * 0.92);
+    ctx.fillStyle = '#c49a58';
+    ctx.beginPath();
+    ctx.moveTo(p.x - s / 2, top);
+    ctx.lineTo(p.x - s * 0.32, top - s * 0.2);
+    ctx.lineTo(p.x + s * 0.68, top - s * 0.2);
+    ctx.lineTo(p.x + s / 2, top);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(56,36,14,0.85)';
+    ctx.fillRect(p.x - s * 0.3, top, s * 0.13, s * 0.92);
+    ctx.fillRect(p.x + s * 0.17, top, s * 0.13, s * 0.92);
+    ctx.fillRect(p.x - s / 2, top + s * 0.4, s, s * 0.13);
+    ctx.strokeStyle = 'rgba(250,246,238,0.9)';
+    ctx.lineWidth = Math.max(1, s * 0.05);
+    ctx.strokeRect(p.x - s * 0.11, top + s * 0.58, s * 0.22, s * 0.22);
     ctx.restore();
   }
 }
@@ -367,7 +462,13 @@ function drawSmoke(ctx, plane, dt) {
   ctx.restore();
 }
 
-/** The aeroplane, from behind and above: built shapes, lit tips, a blurred prop at the nose. */
+/**
+ * The aeroplane, from behind and above, drawn like a built thing rather than a cut-out:
+ * a fuselage shaded round its section (bright spine, dark flanks, shaded tail cone), an
+ * engine cowling with cooling slots and an exhaust, a three-blade propeller turning on
+ * its phase over a faint disc, a framed canopy with the sun caught on it, fixed gear,
+ * and the courier's livery carried on the fin and the cream wingtips.
+ */
 function drawPlane(ctx, plane) {
   const cx = CX;
   const cy = H * 0.585 + Math.sin(plane.time * 2.1) * (plane.onGround ? 0 : 1.6) - plane.pitch * 26;
@@ -375,16 +476,58 @@ function drawPlane(ctx, plane) {
   ctx.translate(cx, cy);
   ctx.rotate(plane.roll * 0.88);
   const s = 1; // the sprite's own scale: it is the camera's subject, always the same size
-  // Tailplane and fin (nearest the camera).
-  ctx.fillStyle = '#c8452c';
+
+  // Fixed undercarriage first, so the fuselage overlaps the strut tops: two legs angling
+  // down and out to the main wheels, and a small tailwheel under the tail cone.
+  ctx.strokeStyle = '#7c2d18';
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(-10 * s, 14 * s);
+  ctx.lineTo(-21 * s, 44 * s);
+  ctx.moveTo(10 * s, 14 * s);
+  ctx.lineTo(21 * s, 44 * s);
+  ctx.stroke();
+  for (const wx of [-22, 22]) {
+    ctx.fillStyle = '#26221e';
+    ctx.beginPath();
+    ctx.ellipse(wx * s, 49 * s, 6.4 * s, 8.6 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#9a948a';
+    ctx.beginPath();
+    ctx.arc(wx * s, 49 * s, 2.4 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#26221e';
+  ctx.beginPath();
+  ctx.arc(0, 48 * s, 3.4 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tailplane in two halves — port lit, starboard shaded — with its elevator line.
+  ctx.fillStyle = '#d84f30';
   ctx.beginPath();
   ctx.moveTo(-52 * s, 30 * s);
-  ctx.lineTo(52 * s, 30 * s);
-  ctx.lineTo(38 * s, 42 * s);
+  ctx.lineTo(0, 27 * s);
+  ctx.lineTo(0, 40 * s);
   ctx.lineTo(-38 * s, 42 * s);
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = '#a8361f';
+  ctx.beginPath();
+  ctx.moveTo(0, 27 * s);
+  ctx.lineTo(52 * s, 30 * s);
+  ctx.lineTo(38 * s, 42 * s);
+  ctx.lineTo(0, 40 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(90,20,8,0.4)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-46 * s, 36 * s);
+  ctx.lineTo(46 * s, 36 * s);
+  ctx.stroke();
+
+  // The fin carries the livery: a cream tip and the courier's orange band.
+  ctx.fillStyle = '#b23a22';
   ctx.beginPath();
   ctx.moveTo(-5 * s, 34 * s);
   ctx.lineTo(5 * s, 34 * s);
@@ -392,31 +535,71 @@ function drawPlane(ctx, plane) {
   ctx.lineTo(-3 * s, 8 * s);
   ctx.closePath();
   ctx.fill();
-  // Main wing.
-  const wingGrad = ctx.createLinearGradient(0, -6, 0, 26);
-  wingGrad.addColorStop(0, '#e2573a');
-  wingGrad.addColorStop(1, '#b23a22');
-  ctx.fillStyle = wingGrad;
+  ctx.fillStyle = '#ffb454';
+  ctx.fillRect(-3.8 * s, 20 * s, 7.6 * s, 4.6 * s);
+  ctx.fillStyle = '#f3ead8';
+  ctx.fillRect(-3.1 * s, 8.4 * s, 6.2 * s, 4 * s);
+
+  // The main wing in two halves, port lit and starboard shaded, with cream tip bands,
+  // a flap line on each side and the darker trailing edge a built wing shows from behind.
+  const wingL = ctx.createLinearGradient(-104, 0, 0, 0);
+  wingL.addColorStop(0, '#e2573a');
+  wingL.addColorStop(1, '#ef6a4c');
+  ctx.fillStyle = wingL;
   ctx.beginPath();
   ctx.moveTo(-104 * s, 8 * s);
   ctx.lineTo(-16 * s, -4 * s);
-  ctx.lineTo(16 * s, -4 * s);
-  ctx.lineTo(104 * s, 8 * s);
-  ctx.lineTo(92 * s, 20 * s);
+  ctx.lineTo(0, -4 * s);
+  ctx.lineTo(0, 20 * s);
   ctx.lineTo(-92 * s, 20 * s);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = 'rgba(90,20,8,0.5)';
-  ctx.lineWidth = 1.4;
+  const wingR = ctx.createLinearGradient(0, 0, 104, 0);
+  wingR.addColorStop(0, '#c2401f');
+  wingR.addColorStop(1, '#a8361f');
+  ctx.fillStyle = wingR;
   ctx.beginPath();
-  ctx.moveTo(-88 * s, 10 * s);
-  ctx.lineTo(88 * s, 10 * s);
-  ctx.stroke();
-  // Fuselage: a tapered body running away from the camera, lit from above.
-  const bodyGrad = ctx.createLinearGradient(0, -64, 0, 44);
-  bodyGrad.addColorStop(0, '#f0664a');
-  bodyGrad.addColorStop(0.5, '#d84f30');
-  bodyGrad.addColorStop(1, '#a8361f');
+  ctx.moveTo(0, -4 * s);
+  ctx.lineTo(16 * s, -4 * s);
+  ctx.lineTo(104 * s, 8 * s);
+  ctx.lineTo(92 * s, 20 * s);
+  ctx.lineTo(0, 20 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(243,234,216,0.92)';
+  ctx.beginPath();
+  ctx.moveTo(-104 * s, 8 * s);
+  ctx.lineTo(-88 * s, 5.6 * s);
+  ctx.lineTo(-85 * s, 19 * s);
+  ctx.lineTo(-92 * s, 20 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(104 * s, 8 * s);
+  ctx.lineTo(88 * s, 5.6 * s);
+  ctx.lineTo(85 * s, 19 * s);
+  ctx.lineTo(92 * s, 20 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(90,20,8,0.20)';
+  ctx.fillRect(-92 * s, 15.5 * s, 184 * s, 4.5 * s);
+  ctx.strokeStyle = 'rgba(90,20,8,0.45)';
+  ctx.lineWidth = 1.3;
+  for (const fx of [-58, 58]) {
+    ctx.beginPath();
+    ctx.moveTo(fx * s, 2.5 * s);
+    ctx.lineTo(fx * s, 18 * s);
+    ctx.stroke();
+  }
+
+  // Fuselage: a tapered body running away from the camera, shaded round its section —
+  // bright along the spine, dark at the flanks — so it reads as a tube, not a cut-out.
+  const bodyGrad = ctx.createLinearGradient(-16, 0, 16, 0);
+  bodyGrad.addColorStop(0, '#9c3018');
+  bodyGrad.addColorStop(0.3, '#d84f30');
+  bodyGrad.addColorStop(0.5, '#f2765a');
+  bodyGrad.addColorStop(0.72, '#cf4527');
+  bodyGrad.addColorStop(1, '#8f2a14');
   ctx.fillStyle = bodyGrad;
   ctx.beginPath();
   ctx.moveTo(0, -66 * s);
@@ -425,39 +608,133 @@ function drawPlane(ctx, plane) {
   ctx.bezierCurveTo(-10 * s, 40 * s, -14 * s, 26 * s, -15 * s, 2 * s);
   ctx.bezierCurveTo(-16 * s, -30 * s, -13 * s, -60 * s, 0, -66 * s);
   ctx.fill();
+  // The shaded underside of the tail cone.
+  ctx.fillStyle = 'rgba(70,15,5,0.22)';
+  ctx.beginPath();
+  ctx.moveTo(-13.5 * s, 16 * s);
+  ctx.bezierCurveTo(-12 * s, 32 * s, -8 * s, 41 * s, 0, 44 * s);
+  ctx.bezierCurveTo(8 * s, 41 * s, 12 * s, 32 * s, 13.5 * s, 16 * s);
+  ctx.bezierCurveTo(6 * s, 22 * s, -6 * s, 22 * s, -13.5 * s, 16 * s);
+  ctx.closePath();
+  ctx.fill();
+  // The engine cowling: a darker metal band at the nose, cooling slots and an exhaust.
+  ctx.fillStyle = 'rgba(52,34,28,0.5)';
+  ctx.beginPath();
+  ctx.moveTo(-12.2 * s, -61 * s);
+  ctx.lineTo(12.2 * s, -61 * s);
+  ctx.bezierCurveTo(14.6 * s, -55 * s, 15 * s, -51 * s, 15.1 * s, -47 * s);
+  ctx.lineTo(-15.1 * s, -47 * s);
+  ctx.bezierCurveTo(-15 * s, -51 * s, -14.6 * s, -55 * s, -12.2 * s, -61 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(18,10,6,0.65)';
+  ctx.lineWidth = 2;
+  for (const sx of [-7, 0, 7]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * s, -58.5 * s);
+    ctx.lineTo(sx * s, -50.5 * s);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#3a2a20';
+  ctx.save();
+  ctx.translate(12.5 * s, -45 * s);
+  ctx.rotate(0.6);
+  ctx.fillRect(-1.6 * s, 0, 3.2 * s, 9 * s);
+  ctx.restore();
+  // Panel lines across the body, and the highlight running down the spine.
   ctx.strokeStyle = 'rgba(90,20,8,0.45)';
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(-13 * s, -18 * s);
-  ctx.bezierCurveTo(-6 * s, -14 * s, 6 * s, -14 * s, 13 * s, -18 * s);
+  ctx.moveTo(-14.8 * s, -18 * s);
+  ctx.bezierCurveTo(-6 * s, -14 * s, 6 * s, -14 * s, 14.8 * s, -18 * s);
   ctx.stroke();
-  // The canopy: glass with a sky reflection and a frame.
+  ctx.beginPath();
+  ctx.moveTo(-15 * s, 4 * s);
+  ctx.bezierCurveTo(-6 * s, 8 * s, 6 * s, 8 * s, 15 * s, 4 * s);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,205,175,0.30)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, -20 * s);
+  ctx.lineTo(0, 30 * s);
+  ctx.stroke();
+  // Aerial mast behind the canopy, and a pitot tube under the port wing.
+  ctx.fillStyle = '#4a3a2c';
+  ctx.fillRect(-0.9 * s, -19 * s, 1.8 * s, 4.5 * s);
+  ctx.strokeStyle = 'rgba(24,18,12,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-70 * s, 15 * s);
+  ctx.lineTo(-70 * s, 23 * s);
+  ctx.stroke();
+
+  // The canopy: glass with a sky reflection, a frame and a centre post, and the sun
+  // caught on its shoulder.
   const glass = ctx.createLinearGradient(0, -52, 0, -24);
-  glass.addColorStop(0, '#cfe8f7');
+  glass.addColorStop(0, '#dceef9');
   glass.addColorStop(0.45, '#6fa8c9');
-  glass.addColorStop(1, '#33566e');
+  glass.addColorStop(1, '#2c4f66');
   ctx.fillStyle = glass;
   ctx.beginPath();
   ctx.ellipse(0, -38 * s, 9.5 * s, 15 * s, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(40,30,20,0.65)';
-  ctx.lineWidth = 1.6;
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath();
+  ctx.ellipse(-3.4 * s, -45 * s, 2.8 * s, 6.2 * s, -0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(3.4 * s, -31 * s, 1.7 * s, 4.2 * s, -0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(32,24,16,0.8)';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.ellipse(0, -38 * s, 9.5 * s, 15 * s, 0, 0, Math.PI * 2);
   ctx.stroke();
-  // The propeller at the nose: a blurred disc and two blade streaks turning with the phase.
+  ctx.strokeStyle = 'rgba(32,24,16,0.5)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(0, -52.5 * s);
+  ctx.lineTo(0, -23.5 * s);
+  ctx.stroke();
+
+  // The propeller: three tapered blades turning on the phase over a faint disc, with a
+  // shaded spinner at the hub.
   ctx.save();
   ctx.translate(0, -68 * s);
-  ctx.fillStyle = 'rgba(230,230,225,0.16)';
+  ctx.fillStyle = 'rgba(232,232,226,0.13)';
   ctx.beginPath();
-  ctx.ellipse(0, 0, 30 * s, 7 * s, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, 31 * s, 7.6 * s, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.rotate(Math.sin(plane.propPhase) * 0.9);
-  ctx.fillStyle = 'rgba(40,36,32,0.55)';
-  ctx.fillRect(-28 * s, -2.2 * s, 56 * s, 4.4 * s);
+  ctx.strokeStyle = 'rgba(240,240,235,0.20)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 31 * s, 7.6 * s, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  for (let k = 0; k < 3; k += 1) {
+    const a = plane.propPhase + (k * Math.PI * 2) / 3;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a) * 0.245; // the disc's squash, so the blades stay on the ellipse
+    const px = -Math.sin(a);
+    const py = Math.cos(a) * 0.245;
+    ctx.fillStyle = 'rgba(38,32,28,0.55)';
+    ctx.beginPath();
+    ctx.moveTo(px * 2.6 * s, py * 2.6 * s);
+    ctx.lineTo(dx * 29 * s - px * 1.1 * s, dy * 29 * s - py * 1.1 * s);
+    ctx.lineTo(dx * 29 * s + px * 1.1 * s, dy * 29 * s + py * 1.1 * s);
+    ctx.lineTo(-px * 2.6 * s, -py * 2.6 * s);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const spinner = ctx.createLinearGradient(-5, -4, 5, 4);
+  spinner.addColorStop(0, '#8d8578');
+  spinner.addColorStop(1, '#4c463c');
+  ctx.fillStyle = spinner;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 5 * s, 4.2 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
-  ctx.fillStyle = '#5d5648';
-  ctx.beginPath();
-  ctx.arc(0, -68 * s, 4.4 * s, 0, Math.PI * 2);
-  ctx.fill();
+
   // Wingtip lights: port red, starboard green, and a tail strobe that blinks.
   ctx.fillStyle = '#ff4b3a';
   ctx.beginPath();
@@ -489,6 +766,7 @@ export function drawWorld(ctx, plane, sortie, dt) {
   drawClouds(ctx, plane);
   drawGround(ctx, plane);
   drawRunwayMarkings(ctx, plane);
+  drawRunwayLights(ctx, plane);
   drawShadow(ctx, plane);
 
   // Projected furniture, far to near, so nearer things stand in front as they should.

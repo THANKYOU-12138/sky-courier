@@ -77,22 +77,43 @@ export function stageShot(name, game) {
     sortie.ringIndex = 6;
     sortie.ringsFlown = 6;
     sortie.score = 900;
-    sortie.fallingCrates.push({ x: 985, z: -6010, alt: 52, fall: 5 });
     flySteps(game, 46, zone.x, zone.z, 44, 0.52);
+    // A crate released a breath ago, placed off the aeroplane's final position so the
+    // whole assembly hangs in open frame: ahead of the nose, below the fuselage and
+    // drifted to the right of the flight path, clear of the aeroplane above and the
+    // cockpit panel below. (V1 staged it in world coordinates and it ended up a speck
+    // behind the marker; a first pass at this staging put it dead ahead and so low
+    // that the panel cut the crate in half.)
+    const aheadX = Math.sin(plane.heading);
+    const aheadZ = -Math.cos(plane.heading);
+    sortie.fallingCrates.length = 0;
+    sortie.fallingCrates.push({
+      x: plane.x + aheadX * 80 + Math.cos(plane.heading) * 36,
+      z: plane.z + aheadZ * 80 + Math.sin(plane.heading) * 36,
+      alt: Math.max(14, plane.alt - 27),
+      fall: 0,
+    });
     return;
   }
   if (name === 'landing') {
-    placeAeroplane(game, { x: 18, z: -1920, alt: 50, heading: Math.PI, roll: 0.02, pitch: -0.05, speed: 43, throttle: 0.3 });
+    placeAeroplane(game, { x: 14, z: -2050, alt: 47, heading: Math.PI, roll: 0.02, pitch: -0.05, speed: 43, throttle: 0.3 });
     sortie.stage = STAGE_RETURN;
     sortie.ringIndex = 6;
     sortie.ringsFlown = 6;
     sortie.dropsMade = 3;
     sortie.dropIndex = 3;
     sortie.score = 1500;
-    // Fly a real glide slope: the target height shrinks with the distance to the threshold.
-    for (let i = 0; i < 84; i += 1) {
+    // Fly a real glide slope all the way in: the target height shrinks with the distance
+    // to the threshold, and the frame is taken on short final — the strip big in the
+    // frame with its lights lit, the altimeter low, the sink rate showing. (V1 stopped
+    // nearly 300 m out and the runway read as a postage stamp.) The aim line sits below
+    // the geometric slope because the shared autopilot holds its nose down with a
+    // persistent height error: aiming low puts the aeroplane itself on the slope, so
+    // the altimeter and the PAPI agree with the picture.
+    for (let i = 0; i < 460; i += 1) {
       const distToThreshold = Math.max(0, -1500 - game.plane.z);
-      const control = autopilot(game.plane, 0, -1500, Math.max(2, distToThreshold * 0.085), 0.3);
+      if (distToThreshold <= 118) break;
+      const control = autopilot(game.plane, 0, -1500, Math.max(2, distToThreshold * 0.085 - 16), 0.3);
       game.plane.throttle = 0.3;
       game.step(control, STEP, {});
     }
