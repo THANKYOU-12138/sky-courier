@@ -4,8 +4,11 @@
 // needle airspeed dial with the stall and overspeed arcs painted on it, an altimeter with a
 // digital readout — because a judge (and a pilot) can tell a flown instrument from a drawn
 // label. The HUD adds what a panel cannot: the mission line, the target marker and warnings.
+// The wind is read here too — a marker for its bearing riding the heading tape and the met
+// report in knots on the panel bench — while the nav chart itself is minimap.js's one job.
 
-import { DROP_MAX_ALT, FLIGHT } from './config.js';
+import { DROP_MAX_ALT, FLIGHT, WIND } from './config.js';
+import { drawNavChart } from './minimap.js';
 import { clamp } from './random.js';
 
 const PANEL_H = 148;
@@ -185,6 +188,17 @@ function drawHeadingTape(ctx, W, heading) {
     const x = cx + (d - (deg - Math.round(deg / 5) * 5)) * 5.4;
     ctx.fillStyle = 'rgba(243,234,216,0.55)';
     ctx.fillRect(x - 0.5, 40, 1, 8);
+    if (shown === WIND.fromDeg) {
+      // The wind's bearing rides the tape as a small amber wedge under its tick, so a
+      // pilot lining up on a heading can see the crosswind waiting without looking down.
+      ctx.fillStyle = AMBER;
+      ctx.beginPath();
+      ctx.moveTo(x - 4.5, 53);
+      ctx.lineTo(x + 4.5, 53);
+      ctx.lineTo(x, 46);
+      ctx.closePath();
+      ctx.fill();
+    }
     if (shown % 15 === 0) {
       ctx.fillStyle = names[shown] ? AMBER : CREAM;
       ctx.font = names[shown] ? '700 17px system-ui, sans-serif' : '600 13px system-ui, sans-serif';
@@ -260,7 +274,15 @@ export function drawCockpit(ctx, W, H, plane, sortie, hud) {
   ctx.fillStyle = CREAM;
   ctx.font = '700 27px ui-monospace, monospace';
   ctx.fillText(String(sortie.score), 436, cy + 18);
+  // The met report, stated once on the bench: where the wind is from, and how hard —
+  // the number behind the drift the nav chart's arrow shows.
+  ctx.fillStyle = 'rgba(243,234,216,0.72)';
+  ctx.font = '600 12.5px ui-monospace, monospace';
+  ctx.fillText(`WIND ${WIND.fromDeg}° · ${Math.round(WIND.speed * 1.944)} KT`, 436, cy + 46);
   ctx.restore();
+
+  // The nav chart, top-right: the whole sortie on one card, clear of the tape.
+  drawNavChart(ctx, W - 196, 14, plane, sortie);
 
   // Lever and state bars on the right of the panel.
   const bx = W - 300;

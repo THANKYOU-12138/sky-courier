@@ -27,6 +27,15 @@ export const FLIGHT = {
   fuelBurnFull: 0.11, // extra percent a second at full throttle (a clean sortie lands near half a tank)
 };
 
+/**
+ * The valley's standing weather: one steady wind for the whole sortie, named the way a
+ * met report names it — the compass bearing it blows FROM, and its speed in metres a
+ * second. A west wind at this strength is a presence, not a storm: it drifts an
+ * airborne aeroplane sideways off its course, so the course must be crabbed, a drop
+ * must be led, and a final must be flown with the correction held in.
+ */
+export const WIND = { fromDeg: 255, speed: 4.0 };
+
 /** The home runway: centre x, the z of its north and south ends, and its width, in metres. */
 export const RUNWAY = { x: 0, zNorth: -1500, zSouth: -900, width: 46 };
 

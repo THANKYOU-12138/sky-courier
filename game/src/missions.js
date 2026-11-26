@@ -69,7 +69,7 @@ export function stageTitle(sortie) {
 export function stageBrief(sortie) {
   if (sortie.stage === STAGE_RINGS) return 'Fly each ring in order. Bank to turn, mind your speed.';
   if (sortie.stage === STAGE_DROPS) return `Below ${DROP_MAX_ALT} m over a marked field, press SPACE to drop.`;
-  if (sortie.stage === STAGE_RETURN) return 'Land on the runway: gentle sink, wings level, slow.';
+  if (sortie.stage === STAGE_RETURN) return 'Land on the runway: gentle sink, crosswind held off.';
   return '';
 }
 

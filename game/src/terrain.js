@@ -33,6 +33,9 @@ export function groundColorAt(x, z) {
     return PALETTE.runway;
   }
   const riverDx = Math.abs(x - riverCenterX(z));
+  // The east–west road does not stop at the river: it crosses on a causeway, drawn in
+  // the road's own colour a little wider than the banks, so the line home stays unbroken.
+  if (Math.abs(z + 4600) < 13 && riverDx < 118) return PALETTE.road;
   if (riverDx < 62) return PALETTE.water;
   if (riverDx < 84) return PALETTE.bank;
   if (Math.abs(x + 720) < 13 || Math.abs(z + 4600) < 13) return PALETTE.road;
@@ -41,8 +44,20 @@ export function groundColorAt(x, z) {
   const cx = Math.floor(x / CELL);
   const cz = Math.floor(z / CELL);
   const h = hash2(cx, cz);
-  if (h > 0.86) return PALETTE.forest;
-  return PALETTE.fields[Math.floor(h * 41) % PALETTE.fields.length];
+  const base = h > 0.86 ? PALETTE.forest : PALETTE.fields[Math.floor(h * 41) % PALETTE.fields.length];
+  // Hedgerows: cells whose hash calls for them wear a dark seam along their edges, so
+  // the patchwork keeps its boundaries when seen from a hundred metres instead of
+  // melting into flat colour. A fresh array is returned — the palette is never mixed in place.
+  const lx = x - cx * CELL;
+  const lz = z - cz * CELL;
+  if (h > 0.3 && h <= 0.86 && (lx < 7 || lx > CELL - 7 || lz < 7 || lz > CELL - 7)) {
+    return [
+      Math.round(base[0] * 0.62 + 34 * 0.38),
+      Math.round(base[1] * 0.62 + 66 * 0.38),
+      Math.round(base[2] * 0.62 + 30 * 0.38),
+    ];
+  }
+  return base;
 }
 
 /** Whether a tree or house may stand at a point: not on water, road, runway or plaza. */
@@ -82,6 +97,9 @@ export function scatterObjects(x0, z0, x1, z1) {
     const z = TOWN.z + Math.sin(a) * r * 0.8;
     out.push({ kind: 'house', x, z, size: 9 + hash2(i, 775) * 5, tone: hash2(i, 777) });
   }
+  // And its landmark: one church tower at the plaza's heart, tall enough to navigate
+  // by — the thing a pilot actually picks out of a town from two kilometres up.
+  out.push({ kind: 'tower', x: TOWN.x + 18, z: TOWN.z - 12, size: 13, tone: 0.5 });
   return out;
 }
 

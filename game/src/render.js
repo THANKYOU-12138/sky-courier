@@ -8,6 +8,7 @@
 // lights, sitting in the lower centre of the frame with its shadow on the ground below.
 
 import { DROP_ZONES, FOCAL, PALETTE, RING_RADIUS, RINGS, RUNWAY, STAGE } from './config.js';
+import { windVector } from './flight-model.js';
 import { clamp, headingDelta, mixCss } from './random.js';
 import { cloudField, groundColorAt, ridgeHeight, scatterObjects } from './terrain.js';
 
@@ -59,6 +60,14 @@ function drawSky(ctx, plane) {
   grad.addColorStop(1, '#dfeef5');
   ctx.fillStyle = grad;
   ctx.fillRect(-520, -520, W + 1040, horizon + 560);
+
+  // A warm haze band lying on the horizon, in the same light the fogged ground fades
+  // into, so sky and valley meet instead of abutting.
+  const haze = ctx.createLinearGradient(0, horizon - 52, 0, horizon + 4);
+  haze.addColorStop(0, 'rgba(255,238,205,0)');
+  haze.addColorStop(1, 'rgba(255,238,205,0.20)');
+  ctx.fillStyle = haze;
+  ctx.fillRect(-520, horizon - 52, W + 1040, 56);
 
   // The sun, fixed in the southwest: a glow and a disc where its bearing puts it.
   const sunBearing = headingDelta(plane.heading, (235 * Math.PI) / 180);
@@ -284,6 +293,68 @@ function drawHouse(ctx, p, sizePx, tone) {
   ctx.fill();
   ctx.fillStyle = 'rgba(255,214,120,0.9)';
   ctx.fillRect(p.x - w * 0.18, p.y - h * 0.62, w * 0.13, h * 0.2);
+}
+
+/** The town's church tower: a stone shaft and a slate spire, the valley's landmark. */
+function drawTower(ctx, p, sizePx) {
+  const w = sizePx * 0.62;
+  const h = sizePx * 2.9;
+  ctx.fillStyle = '#b3a58f';
+  ctx.fillRect(p.x - w / 2, p.y - h, w, h);
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillRect(p.x + w * 0.14, p.y - h, w * 0.36, h);
+  ctx.fillStyle = '#4c5a66';
+  ctx.beginPath();
+  ctx.moveTo(p.x - w * 0.68, p.y - h);
+  ctx.lineTo(p.x + w * 0.68, p.y - h);
+  ctx.lineTo(p.x, p.y - h - sizePx * 1.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,214,120,0.95)';
+  ctx.fillRect(p.x - w * 0.14, p.y - h * 0.68, w * 0.28, h * 0.16);
+}
+
+/**
+ * The windsock beside the home threshold: a striped cone on a pole, streamed out
+ * downwind and stirring a little, drawn from the model's own wind vector — the
+ * ground-level twin of the marker on the heading tape.
+ */
+function drawWindsock(ctx, plane) {
+  const wx = RUNWAY.x + 40;
+  const wz = RUNWAY.zSouth - 70;
+  const base = project(plane, wx, wz, 0);
+  if (!base || base.f > 2400) return;
+  const top = project(plane, wx, wz, 8);
+  if (!top) return;
+  const wind = windVector();
+  const tip = project(plane, wx + wind.x * 1.7, wz + wind.z * 1.7, 7.1 + Math.sin(plane.time * 2.3) * 0.3);
+  if (!tip) return;
+  ctx.save();
+  ctx.strokeStyle = '#5a5148';
+  ctx.lineWidth = Math.max(1.2, (0.35 * FOCAL) / base.f);
+  ctx.beginPath();
+  ctx.moveTo(base.x, base.y);
+  ctx.lineTo(top.x, top.y);
+  ctx.stroke();
+  // The cone in three bands, wide at the pole and narrow at the streaming tip.
+  const dx = tip.x - top.x;
+  const dy = tip.y - top.y;
+  const widths = [0.5, 0.34, 0.2];
+  for (let i = 0; i < 3; i += 1) {
+    const t0 = i / 3;
+    const t1 = (i + 1) / 3;
+    const w0 = (widths[i] * FOCAL) / base.f;
+    const w1 = (widths[Math.min(i + 1, 2)] * FOCAL) / base.f;
+    ctx.fillStyle = i % 2 === 0 ? '#ff8c3c' : '#f3ead8';
+    ctx.beginPath();
+    ctx.moveTo(top.x + dx * t0, top.y + dy * t0 - w0);
+    ctx.lineTo(top.x + dx * t1, top.y + dy * t1 - w1);
+    ctx.lineTo(top.x + dx * t1, top.y + dy * t1 + w1);
+    ctx.lineTo(top.x + dx * t0, top.y + dy * t0 + w0);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawRing(ctx, plane, ring, index, sortie) {
@@ -767,6 +838,7 @@ export function drawWorld(ctx, plane, sortie, dt) {
   drawGround(ctx, plane);
   drawRunwayMarkings(ctx, plane);
   drawRunwayLights(ctx, plane);
+  drawWindsock(ctx, plane);
   drawShadow(ctx, plane);
 
   // Projected furniture, far to near, so nearer things stand in front as they should.
@@ -780,6 +852,7 @@ export function drawWorld(ctx, plane, sortie, dt) {
     const sizePx = (obj.size * FOCAL) / p.f;
     if (sizePx < 2.2) continue;
     if (obj.kind === 'tree') drawTree(ctx, p, sizePx * 1.9, obj.tone);
+    else if (obj.kind === 'tower') drawTower(ctx, p, sizePx * 1.5);
     else drawHouse(ctx, p, sizePx * 1.5, obj.tone);
   }
   RINGS.forEach((ring, i) => drawRing(ctx, plane, ring, i, sortie));

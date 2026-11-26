@@ -4,10 +4,22 @@
 // dive gains it, and below the stall the wing gives up and the nose drops whether the pilot
 // likes it or not. Turns come from bank, not from a yaw key, so flying well means managing
 // energy: that is the game inside the game. Touchdown is reported, never judged here; the
-// missions module decides whether a arrival was a landing or an accident.
+// missions module decides whether a arrival was a landing or an accident. The valley's
+// wind is in the model too: it moves the ground track, never the airspeed, so the wing
+// feels nothing and the course feels everything.
 
-import { FLIGHT, RUNWAY } from './config.js';
+import { FLIGHT, RUNWAY, WIND } from './config.js';
 import { clamp } from './random.js';
+
+/**
+ * The wind as a ground-drift vector in metres a second: the direction it blows TOWARD,
+ * as { x, z } in world axes. Every readout (tape marker, windsock, nav chart) draws
+ * from this one vector, so the instruments can never disagree with the physics.
+ */
+export function windVector() {
+  const toward = ((WIND.fromDeg + 180) * Math.PI) / 180;
+  return { x: Math.sin(toward) * WIND.speed, z: -Math.cos(toward) * WIND.speed };
+}
 
 /** A fresh aeroplane, parked at the south end of the home runway, engine idling. */
 export function createPlane() {
@@ -116,10 +128,17 @@ export function stepPlane(state, control, dt) {
     state.alt += vspeed * dt;
   }
 
-  // Travel over the ground.
+  // Travel over the ground. Airborne, the wind rides along: the aeroplane's track is
+  // its heading's motion plus the drift, which is why a crosswind final must be
+  // crabbed and a drop must be led. On the ground the wheels hold it straight.
   const groundSpeed = state.speed * Math.cos(state.pitch);
   state.x += Math.sin(state.heading) * groundSpeed * dt;
   state.z += -Math.cos(state.heading) * groundSpeed * dt;
+  if (!state.onGround) {
+    const wind = windVector();
+    state.x += wind.x * dt;
+    state.z += wind.z * dt;
+  }
 
   // Overspeed hurts, slowly and then all at once.
   state.overspeeding = state.speed > FLIGHT.overspeed;

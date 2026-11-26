@@ -119,8 +119,13 @@ export function stageShot(name, game) {
     }
     return;
   }
-  // The cover: outbound over the valley, the first ring ahead, the river off the wing.
+  // The cover: outbound over the valley, banked onto the first ring at a hundred
+  // metres with the river bend under the wing and the town across the valley — the
+  // sheet's biggest picture should have motion in it. (V2 flew it wings-level at
+  // 127 m: correct, but static.) The aeroplane starts wide of the ring line and the
+  // shared autopilot is still turning it onto the gate when the frame is taken, so
+  // the bank is real flying, not a pose; the ring stays ahead, the instruments lit.
   const ring = RINGS[0];
-  placeAeroplane(game, { x: 70, z: -2050, alt: 124, heading: 0, roll: -0.06, pitch: 0.03, speed: 58, throttle: 0.75 });
-  flySteps(game, 95, ring.x, ring.z, ring.alt, 0.75);
+  placeAeroplane(game, { x: 330, z: -1980, alt: 104, heading: -0.38, roll: -0.3, pitch: 0.03, speed: 58, throttle: 0.75 });
+  flySteps(game, 62, ring.x, ring.z, ring.alt, 0.75);
 }
